@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Voice Companion</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background: #1e293b;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            max-width: 400px;
+            width: 100%;
+        }
+        button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 20px;
+        }
+        button:hover { background-color: #2563eb; }
+        button.active { background-color: #ef4444; }
+        .status { margin-top: 15px; font-size: 14px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Asistente de Voz</h2>
+        <p class="status" id="status">Desconectado</p>
+        <button id="toggleBtn" onclick="toggleCall()">Iniciar Conversación</button>
+    </div>
+
+    <script>
+        let isConnected = false;
+        const statusEl = document.getElementById('status');
+        const btnEl = document.getElementById('toggleBtn');
+
+        function toggleCall() {
+            if (!isConnected) {
+                startCall();
+            } else {
+                stopCall();
+            }
+        }
+
+        function startCall() {
+            isConnected = true;
+            statusEl.textContent = "Conectando con la voz de Gemini...";
+            btnEl.textContent = "Colgar";
+            btnEl.classList.add('active');
+
+            setTimeout(() => {
+                statusEl.textContent = "Conversación activa. Habla ahora...";
+            }, 1000);
+        }
+
+        function stopCall() {
+            isConnected = false;
+            statusEl.textContent = "Desconectado";
+            btnEl.textContent = "Iniciar Conversación";
+            btnEl.classList.remove('active');
+        }
+    </script>
+</body>
+</html>
