@@ -57,7 +57,6 @@
         button.active { background-color: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
         .status { margin-top: 20px; font-size: 14px; color: #94a3b8; font-style: italic; min-height: 24px; }
     </style>
-    <!-- Importar el SDK oficial de Google GenAI para soporte web nativo -->
     <script type="importmap">
       {
         "imports": {
@@ -75,7 +74,7 @@
             <input type="password" id="apiKey" placeholder="AIzaSy...">
         </div>
 
-        <button id="toggleBtn" onclick="toggleCall()">Conectar Llamada</button>
+        <button id="toggleBtn" onclick="window.handleButton()">Conectar Llamada</button>
         <p class="status" id="status">Introduce tu clave y pulsa conectar.</p>
     </div>
 
@@ -92,7 +91,8 @@
         const btnEl = document.getElementById('toggleBtn');
         const apiKeyInput = document.getElementById('apiKey');
 
-        window.toggleCall = async function() {
+        window.handleButton = async function() {
+            console.log("Botón pulsado. Estado actual:", isConnected);
             if (!isConnected) {
                 const apiKey = apiKeyInput.value.trim();
                 if (!apiKey) {
@@ -103,21 +103,23 @@
             } else {
                 stopCall();
             }
-        }
+        };
 
         async function startCall(apiKey) {
             try {
                 statusEl.textContent = "Solicitando acceso al micrófono...";
+                console.log("Pidiendo permisos de micrófono...");
+                
                 mediaStream = await navigator.mediaDevices.getUserMedia({ 
                     audio: { channelCount: 1, sampleRate: 16000 } 
                 });
 
-                statusEl.textContent = "Estableciendo conexión con el SDK oficial...";
+                statusEl.textContent = "Inicializando cliente oficial...";
+                console.log("Iniciando cliente GoogleGenAI...");
                 
-                // Inicializar el cliente oficial de Google GenAI
                 client = new GoogleGenAI({ apiKey: apiKey });
 
-                // Configurar la sesión de Live API mediante el cliente oficial
+                statusEl.textContent = "Conectando con la Live API...";
                 session = await client.aio.connect({
                     model: "models/gemini-2.0-flash-exp",
                     config: {
@@ -129,14 +131,14 @@
                 statusEl.textContent = "¡Conectado! Habla ahora...";
                 btnEl.textContent = "Colgar";
                 btnEl.classList.add('active');
+                console.log("Conexión establecida con éxito.");
 
-                // Iniciar la transmisión de audio bidireccional
                 startAudioPipeline();
                 listenToResponses();
 
             } catch (err) {
-                console.error("Error al iniciar la llamada:", err);
-                statusEl.textContent = "Error: " + (err.message || "No se pudo conectar.");
+                console.error("Error crítico en startCall:", err);
+                statusEl.textContent = "Error: " + (err.message || err.toString());
                 stopCall();
             }
         }
@@ -162,7 +164,6 @@
                 }
                 const base64Data = btoa(binary);
 
-                // Enviar chunks de audio a través del SDK oficial
                 session.send({
                     realtimeInput: {
                         mediaChunks: [{
@@ -189,7 +190,7 @@
                     }
                 }
             } catch (err) {
-                console.error("Error en recepción de audio:", err);
+                console.error("Error en recepción:", err);
                 stopCall();
             }
         }
@@ -237,3 +238,9 @@
             }
             isConnected = false;
             btnEl.textContent = "Conectar Llamada";
+            btnEl.classList.remove('active');
+            statusEl.textContent = "Llamada finalizada.";
+        }
+    </script>
+</body>
+</html>
