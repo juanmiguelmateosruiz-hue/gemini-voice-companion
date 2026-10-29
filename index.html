@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Juanmi & Gemini - Canal de Voz Directo</title>
+    <title>Canal de Voz Directo</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -22,18 +22,18 @@
             padding: 40px;
             border-radius: 24px;
             box-shadow: 0 15px 35px rgba(0,0,0,0.5);
-            max-width: 440px;
+            max-width: 420px;
             width: 100%;
             border: 1px solid #334155;
         }
-        h2 { margin-bottom: 8px; font-size: 24px; color: #f8fafc; }
+        h2 { margin-bottom: 5px; font-size: 22px; color: #f8fafc; }
         .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 25px; }
         
         button {
             background-color: #3b82f6;
             color: white;
             border: none;
-            padding: 18px 36px;
+            padding: 16px 32px;
             font-size: 18px;
             border-radius: 50px;
             cursor: pointer;
@@ -41,21 +41,21 @@
             font-weight: 600;
             box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
         }
-        button:hover { background-color: #2563eb; transform: translateY(-1px); }
+        button:hover { background-color: #2563eb; }
         button.active { background-color: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
         
-        .status { margin-top: 25px; font-size: 15px; color: #94a3b8; font-style: italic; min-height: 24px; }
-        .transcript { 
-            margin-top: 20px; 
-            font-size: 14px; 
+        .status { margin-top: 20px; font-size: 14px; color: #94a3b8; font-style: italic; min-height: 24px; }
+        .log-box { 
+            margin-top: 15px; 
+            font-size: 13px; 
             color: #cbd5e1; 
             background: #0f172a; 
-            padding: 15px; 
-            border-radius: 12px; 
-            min-height: 60px; 
+            padding: 12px; 
+            border-radius: 10px; 
+            min-height: 50px; 
             text-align: left; 
             border: 1px solid #334155;
-            max-height: 150px;
+            max-height: 120px;
             overflow-y: auto;
         }
     </style>
@@ -63,136 +63,130 @@
 <body>
     <div class="container">
         <h2>Canal de Voz</h2>
-        <div class="subtitle">Conversación directa y natural</div>
+        <div class="subtitle">Conexión Conversacional Directa</div>
 
-        <button id="toggleBtn" onclick="toggleConversation()">Iniciar Conversación</button>
-        <p class="status" id="status">Pulsa el botón para empezar a hablar.</p>
-        <div class="transcript" id="transcript">Aquí aparecerá el diálogo en tiempo real...</div>
+        <button id="toggleBtn" onclick="toggleSystem()">Iniciar</button>
+        <p class="status" id="status">Pulsa el botón para activar el canal.</p>
+        <div class="log-box" id="logBox">Esperando activación...</div>
     </div>
 
     <script>
         const statusEl = document.getElementById('status');
         const btnEl = document.getElementById('toggleBtn');
-        const transcriptEl = document.getElementById('transcript');
+        const logBox = document.getElementById('logBox');
 
         let recognition = null;
-        let isRunning = false;
-        let voices = [];
+        let active = false;
 
-        // Cargar voces del sistema para la síntesis de voz
-        function loadVoices() {
-            voices = window.speechSynthesis.getVoices();
+        function log(msg) {
+            logBox.innerHTML += `<br>• ${msg}`;
+            logBox.scrollTop = logBox.scrollHeight;
         }
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-        loadVoices();
 
-        function toggleConversation() {
-            if (!isRunning) {
-                startSession();
+        function toggleSystem() {
+            if (!active) {
+                startListening();
             } else {
-                stopSession();
+                stopListening();
             }
         }
 
-        function startSession() {
+        function startListening() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
             if (!SpeechRecognition) {
-                alert("Tu navegador no soporta reconocimiento de voz. Por favor, usa Google Chrome.");
+                alert("Tu navegador no soporta reconocimiento de voz. Usa Google Chrome.");
+                log("Error: SpeechRecognition no soportado.");
                 return;
             }
 
-            recognition = new SpeechRecognition();
-            recognition.lang = 'es-ES';
-            recognition.continuous = false;
-            recognition.interimResults = false;
+            try {
+                recognition = new SpeechRecognition();
+                recognition.lang = 'es-ES';
+                recognition.continuous = false;
+                recognition.interimResults = false;
 
-            recognition.onstart = () => {
-                isRunning = true;
-                btnEl.textContent = "Escuchando...";
-                btnEl.classList.add('active');
-                statusEl.textContent = "Te escucho, habla ahora...";
-            };
+                recognition.onstart = () => {
+                    active = true;
+                    btnEl.textContent = "Escuchando...";
+                    btnEl.classList.add('active');
+                    statusEl.textContent = "Te escucho atentamente...";
+                    log("Micrófono abierto y escuchando.");
+                };
 
-            recognition.onresult = (event) => {
-                const userText = event.results[0][0].transcript;
-                transcriptEl.innerHTML = `<strong>Tú:</strong> ${userText}`;
-                statusEl.textContent = "Procesando respuesta...";
+                recognition.onresult = (event) => {
+                    const text = event.results[0][0].transcript;
+                    log(`Tú: "${text}"`);
+                    statusEl.textContent = "Procesando...";
+                    respondToUser(text);
+                };
 
-                // Generar respuesta conversacional directa
-                generateResponse(userText);
-            };
+                recognition.onerror = (event) => {
+                    log(`Error de micro: ${event.error}`);
+                    statusEl.textContent = "Error detectado. Reiniciando...";
+                };
 
-            recognition.onerror = (event) => {
-                console.error("Error de voz:", event.error);
-                statusEl.textContent = "Error en el micrófono. Reiniciando escucha...";
-            };
+                recognition.onend = () => {
+                    if (active) {
+                        try {
+                            recognition.start();
+                        } catch(e) {}
+                    }
+                };
 
-            recognition.onend = () => {
-                if (isRunning) {
-                    try {
-                        recognition.start();
-                    } catch (e) {}
-                }
-            };
-
-            recognition.start();
+                recognition.start();
+            } catch (err) {
+                log(`Excepción al iniciar: ${err.message}`);
+            }
         }
 
-        function generateResponse(userText) {
-            // Respuestas inteligentes y directas adaptadas al contexto de conversación fluida
-            let reply = "Entendido. Cuéntame más sobre eso, ¿cómo prefieres que lo enfoquemos?";
+        function respondToUser(userText) {
+            let reply = "Entendido, dime cómo seguimos con esto.";
             
             const lower = userText.toLowerCase();
-            if (lower.includes("hola") || lower.includes("buenos días") || lower.includes("buenas")) {
-                reply = "¡Hola! Qué bueno hablar contigo directamente. Dime, ¿en qué estás trabajando hoy?";
+            if (lower.includes("hola") || lower.includes("buenos") || lower.includes("buenas")) {
+                reply = "¡Hola! Qué gusto hablar directamente. ¿Qué proyectos tenemos entre manos hoy?";
             } else if (lower.includes("hotel") || lower.includes("ukino") || lower.includes("algarve")) {
-                reply = "Perfecto, hablemos de la gestión en el hotel o de los proyectos en el Algarve. ¿Qué necesitas ajustar?";
+                reply = "Perfecto, hablemos de la operativa o de la gestión en el Algarve. ¿Qué necesitas perfilar?";
             } else if (lower.includes("app") || lower.includes("código") || lower.includes("github")) {
-                reply = "Ya veo. Con esta estructura directa evitamos fallos de red y conseguimos una charla fluida. ¿Qué más modificamos?";
-            } else {
-                reply = `He captado tu mensaje: "${userText}". Sigamos adelante con ello, dime los siguientes pasos.`;
+                reply = "De acuerdo, mantengamos el canal directo y fluido. ¿Qué ajustamos ahora?";
             }
 
-            transcriptEl.innerHTML += `<br><br><strong>Gemini:</strong> ${reply}`;
-            statusEl.textContent = "Hablando...";
-            speak(reply);
+            log(<strong>Gemini:</strong> ${reply});
+            speakText(reply);
         }
 
-        function speak(text) {
+        function speakText(text) {
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'es-ES';
                 utterance.rate = 1.05;
 
-                // Seleccionar voz en español natural si está disponible
-                const preferredVoice = voices.find(v => v.lang.startsWith('es') && (v.name.includes('Google') || v.name.includes('Lucia') || v.name.includes('Natural')));
-                if (preferredVoice) {
-                    utterance.voice = preferredVoice;
-                }
-
                 utterance.onend = () => {
-                    if (isRunning) {
+                    if (active) {
                         statusEl.textContent = "Te escucho de nuevo...";
                     }
                 };
 
-                window.speechSynthesis.spend ? null : window.speechSynthesis.speak(utterance);
+                window.speechSynthesis.speak(utterance);
+            } else {
+                statusEl.textContent = "Síntesis de voz no disponible.";
             }
         }
 
-        function stopSession() {
-            isRunning = false;
+        function stopListening() {
+            active = false;
             if (recognition) {
                 recognition.stop();
             }
             if ('speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
             }
-            btnEl.textContent = "Iniciar Conversación";
+            btnEl.textContent = "Iniciar";
             btnEl.classList.remove('active');
-            statusEl.textContent = "Conversación finalizada.";
-            transcriptEl.innerHTML = "Aquí aparecerá el diálogo en tiempo real...";
+            statusEl.textContent = "Canal pausado.";
+            log("Sistema detenido.");
         }
     </script>
 </body>
