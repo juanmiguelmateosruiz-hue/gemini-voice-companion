@@ -24,6 +24,7 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
             max-width: 400px;
             width: 100%;
+            position: relative;
         }
         button {
             background-color: #3b82f6;
@@ -39,12 +40,29 @@
         button:hover { background-color: #2563eb; }
         button.active { background-color: #ef4444; }
         .status { margin-top: 15px; font-size: 14px; color: #94a3b8; }
+        .config-box { margin-bottom: 20px; text-align: left; }
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: white;
+            box-sizing: border-box;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Asistente de Voz</h2>
-        <p class="status" id="status">Desconectado</p>
+        
+        <div class="config-box">
+            <label for="apiKey" style="font-size: 12px; color: #94a3b8;">Clave API de Gemini:</label>
+            <input type="password" id="apiKey" placeholder="Pega tu API Key aquí...">
+        </div>
+
+        <p class="status" id="status">Introduce tu clave y pulsa Iniciar</p>
         <button id="toggleBtn" onclick="toggleCall()">Iniciar Conversación</button>
     </div>
 
@@ -52,27 +70,38 @@
         let isConnected = false;
         const statusEl = document.getElementById('status');
         const btnEl = document.getElementById('toggleBtn');
+        let mediaStream = null;
 
-        function toggleCall() {
+        async function toggleCall() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            if (!apiKey) {
+                alert("Por favor, introduce primero tu clave de API de Gemini.");
+                return;
+            }
+
             if (!isConnected) {
-                startCall();
+                try {
+                    statusEl.textContent = "Solicitando acceso al micrófono...";
+                    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    isConnected = true;
+                    statusEl.textContent = "Conversación activa. Habla ahora...";
+                    btnEl.textContent = "Colgar";
+                    btnEl.classList.add('active');
+                } catch (err) {
+                    console.error(err);
+                    statusEl.textContent = "Error: No se pudo acceder al micrófono.";
+                }
             } else {
                 stopCall();
             }
         }
 
-        function startCall() {
-            isConnected = true;
-            statusEl.textContent = "Conectando con la voz de Gemini...";
-            btnEl.textContent = "Colgar";
-            btnEl.classList.add('active');
-            
-            setTimeout(() => {
-                statusEl.textContent = "Conversación activa. Habla ahora...";
-            }, 1000);
-        }
-
         function stopCall() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
             isConnected = false;
             statusEl.textContent = "Desconectado";
             btnEl.textContent = "Iniciar Conversación";
