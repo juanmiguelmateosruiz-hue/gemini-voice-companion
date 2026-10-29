@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Voice Companion</title>
+    <title>Gemini Voice Companion - Direct Live</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -21,91 +21,238 @@
             background: #1e293b;
             padding: 40px;
             border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            max-width: 420px;
             width: 100%;
-            position: relative;
         }
         button {
             background-color: #3b82f6;
             color: white;
             border: none;
-            padding: 15px 30px;
+            padding: 15px 35px;
             font-size: 18px;
             border-radius: 50px;
             cursor: pointer;
             transition: background 0.2s;
             margin-top: 20px;
+            font-weight: bold;
         }
         button:hover { background-color: #2563eb; }
         button.active { background-color: #ef4444; }
-        .status { margin-top: 15px; font-size: 14px; color: #94a3b8; }
+        .status { margin-top: 20px; font-size: 15px; color: #94a3b8; min-height: 24px; }
         .config-box { margin-bottom: 20px; text-align: left; }
         input[type="password"] {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             border-radius: 8px;
             border: 1px solid #475569;
             background: #0f172a;
             color: white;
             box-sizing: border-box;
-            margin-top: 5px;
+            margin-top: 6px;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Asistente de Voz</h2>
+        <h2>Canal de Voz Directo</h2>
         
         <div class="config-box">
-            <label for="apiKey" style="font-size: 12px; color: #94a3b8;">Clave API de Gemini:</label>
-            <input type="password" id="apiKey" placeholder="Pega tu API Key aquí...">
+            <label for="apiKey" style="font-size: 12px; color: #94a3b8;">Introduce tu clave API de Gemini:</label>
+            <input type="password" id="apiKey" placeholder="AIzaSy...">
         </div>
 
-        <p class="status" id="status">Introduce tu clave y pulsa Iniciar</p>
-        <button id="toggleBtn" onclick="toggleCall()">Iniciar Conversación</button>
+        <p class="status" id="status">Desconectado</p>
+        <button id="toggleBtn" onclick="toggleSession()">Conectar Llamada</button>
     </div>
 
     <script>
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
         let isConnected = false;
+
         const statusEl = document.getElementById('status');
         const btnEl = document.getElementById('toggleBtn');
-        let mediaStream = null;
+        const apiKeyInput = document.getElementById('apiKey');
 
-        async function toggleCall() {
-            const apiKey = document.getElementById('apiKey').value.trim();
-            if (!apiKey) {
-                alert("Por favor, introduce primero tu clave de API de Gemini.");
-                return;
-            }
-
+        async function toggleSession() {
             if (!isConnected) {
-                try {
-                    statusEl.textContent = "Solicitando acceso al micrófono...";
-                    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    
-                    isConnected = true;
-                    statusEl.textContent = "Conversación activa. Habla ahora...";
-                    btnEl.textContent = "Colgar";
-                    btnEl.classList.add('active');
-                } catch (err) {
-                    console.error(err);
-                    statusEl.textContent = "Error: No se pudo acceder al micrófono.";
+                const apiKey = apiKeyInput.value.trim();
+                if (!apiKey) {
+                    alert("Por favor, introduce tu clave de API.");
+                    return;
                 }
+                startLiveSession(apiKey);
             } else {
-                stopCall();
+                stopLiveSession();
             }
         }
 
-        function stopCall() {
+        async function startLiveSession(apiKey) {
+            try {
+                statusEl.textContent = "Solicitando acceso al micrófono...";
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { channelCount: 1, sampleRate: 16000 } 
+                });
+
+                statusEl.textContent = "Conectando con el canal de voz...";
+                
+                // Usamos el modelo de Live API con WebSockets de Google
+                const host = "generativelanguage.googleapis.com";
+                const model = "models/gemini-2.0-flash-exp"; // O el modelo live habilitado
+                const url = `wss://${host}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    isConnected = true;
+                    statusEl.textContent = "¡Conectado! Habla ahora...";
+                    btnEl.textContent = "Colgar";
+                    btnEl.classList.add('active');
+
+                    // Mensaje de configuración inicial exigido por la API Live
+                    const setupMessage = {
+                        setup: {
+                            model: model,
+                            generationConfig: {
+                                responseModalities: ["AUDIO"]
+                            }
+                        }
+                    };
+                    ws.send(JSON.stringify(setupMessage));
+
+                    // Iniciar la captura de audio del micro para enviarla
+                    startAudioStreaming();
+                };
+
+                ws.onmessage = async (event) => {
+                    // Procesar la respuesta de audio entrante de Gemini
+                    try {
+                        let responseText = event.data;
+                        if (event.data instanceof Blob) {
+                            responseText = await event.data.text();
+                        }
+                        const response = JSON.parse(responseText);
+                        
+                        // Si recibimos audio del modelo, lo reproducimos
+                        if (response.serverContent?.modelTurn?.parts) {
+                            for (const part of response.serverContent.modelTurn.parts) {
+                                if (part.inlineData && part.inlineData.mimeType.startsWith("audio/")) {
+                                    playAudioChunk(part.inlineData.data);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error procesando mensaje:", e);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error("Error en WebSocket:", error);
+                    statusEl.textContent = "Error de conexión con la API.";
+                    stopLiveSession();
+                };
+
+                ws.onclose = () => {
+                    statusEl.textContent = "Llamada finalizada.";
+                    stopLiveSession();
+                };
+
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = "No se pudo iniciar el servicio de voz.";
+                stopLiveSession();
+            }
+        }
+
+        function startAudioStreaming() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (e) => {
+                if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+                
+                const inputData = e.inputBuffer.getChannelData(0);
+                // Convertir Float32 a PCM 16-bit
+                const pcm16 = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcm16[i] = inputData[i] * 0x7FFF;
+                }
+
+                // Codificar a base64
+                const uint8Array = new Uint8Array(pcm16.buffer);
+                let binary = "";
+                for (let i = 0; i < uint8Array.byteLength; i++) {
+                    binary += String.fromCharCode(uint8Array[i]);
+                }
+                const base64Data = btoa(binary);
+
+                // Enviar a la Live API de Gemini
+                const realtimeMessage = {
+                    realtimeInput: {
+                        mediaChunks: [{
+                            mimeType: "audio/pcm;rate=16000",
+                            data: base64Data
+                        }]
+                    }
+                };
+                ws.send(JSON.stringify(realtimeMessage));
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+        }
+
+        async function playAudioChunk(base64Audio) {
+            if (!audioContext) return;
+            try {
+                const binaryString = atob(base64Audio);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const pcm16 = new Int16Array(bytes.buffer);
+                const float32 = new Float32Array(pcm16.length);
+                for (let i = 0; i < pcm16.length; i++) {
+                    float32[i] = pcm16[i] / 32768.0;
+                }
+
+                const buffer = audioContext.createBuffer(1, float32.length, 24000); // Salida a 24kHz según especificación de Gemini
+                buffer.getChannelData(0).set(float32);
+
+                const node = audioContext.createBufferSource();
+                node.buffer = buffer;
+                node.connect(audioContext.destination);
+                node.start();
+            } catch (e) {
+                console.error("Error reproduciendo audio:", e);
+            }
+        }
+
+        function stopLiveSession() {
             if (mediaStream) {
                 mediaStream.getTracks().forEach(track => track.stop());
                 mediaStream = null;
             }
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
             isConnected = false;
-            statusEl.textContent = "Desconectado";
-            btnEl.textContent = "Iniciar Conversación";
+            btnEl.textContent = "Conectar Llamada";
             btnEl.classList.remove('active');
+            if (statusEl.textContent.includes("¡Conectado!")) {
+                statusEl.textContent = "Desconectado";
+            }
         }
     </script>
 </body>
