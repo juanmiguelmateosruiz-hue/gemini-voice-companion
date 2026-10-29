@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Direct Companion</title>
+    <title>Gemini Direct Voice Companion</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -57,22 +57,33 @@
         button.active { background-color: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
         .status { margin-top: 20px; font-size: 14px; color: #94a3b8; font-style: italic; min-height: 24px; }
     </style>
+    <!-- Importar el SDK oficial de Google GenAI para soporte web nativo -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://esm.run/@google/genai"
+        }
+      }
+    </script>
 </head>
 <body>
     <div class="container">
-        <h2>Mi Aplicación de Voz</h2>
+        <h2>Canal de Voz Oficial</h2>
         
         <div class="config-box">
             <label for="apiKey">Tu clave API de Google AI Studio:</label>
             <input type="password" id="apiKey" placeholder="AIzaSy...">
         </div>
 
-        <button id="toggleBtn" onclick="toggleSession()">Conectar Llamada</button>
+        <button id="toggleBtn" onclick="toggleCall()">Conectar Llamada</button>
         <p class="status" id="status">Introduce tu clave y pulsa conectar.</p>
     </div>
 
-    <script>
-        let ws = null;
+    <script type="module">
+        import { GoogleGenAI } from "@google/genai";
+
+        let client = null;
+        let session = null;
         let audioContext = null;
         let mediaStream = null;
         let isConnected = false;
@@ -81,95 +92,62 @@
         const btnEl = document.getElementById('toggleBtn');
         const apiKeyInput = document.getElementById('apiKey');
 
-        async function toggleSession() {
+        window.toggleCall = async function() {
             if (!isConnected) {
                 const apiKey = apiKeyInput.value.trim();
                 if (!apiKey) {
-                    alert("Introduce tu clave API.");
+                    alert("Introduce tu clave API de Google AI Studio.");
                     return;
                 }
-                startSession(apiKey);
+                await startCall(apiKey);
             } else {
-                stopSession();
+                stopCall();
             }
         }
 
-        async function startSession(apiKey) {
+        async function startCall(apiKey) {
             try {
-                statusEl.textContent = "Solicitando micrófono...";
+                statusEl.textContent = "Solicitando acceso al micrófono...";
                 mediaStream = await navigator.mediaDevices.getUserMedia({ 
                     audio: { channelCount: 1, sampleRate: 16000 } 
                 });
 
-                statusEl.textContent = "Estableciendo conexión segura...";
+                statusEl.textContent = "Estableciendo conexión con el SDK oficial...";
                 
-                // Conexión directa con cabeceras de protocolo corregidas
-                const host = "generativelanguage.googleapis.com";
-                const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+                // Inicializar el cliente oficial de Google GenAI
+                client = new GoogleGenAI({ apiKey: apiKey });
 
-                ws = new WebSocket(url);
-
-                ws.onopen = () => {
-                    isConnected = true;
-                    statusEl.textContent = "¡Conectado! Habla ahora...";
-                    btnEl.textContent = "Colgar";
-                    btnEl.classList.add('active');
-
-                    const setupMessage = {
-                        setup: {
-                            model: "models/gemini-2.0-flash-exp",
-                            generationConfig: {
-                                responseModalities: ["AUDIO"]
-                            }
-                        }
-                    };
-                    ws.send(JSON.stringify(setupMessage));
-                    startAudioStream();
-                };
-
-                ws.onmessage = async (event) => {
-                    try {
-                        let data = event.data;
-                        if (data instanceof Blob) data = await data.text();
-                        const response = JSON.parse(data);
-                        
-                        if (response.serverContent?.modelTurn?.parts) {
-                            for (const part of response.serverContent.modelTurn.parts) {
-                                if (part.inlineData && part.inlineData.mimeType.startsWith("audio/")) {
-                                    playAudio(part.inlineData.data);
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Error procesando audio:", e);
+                // Configurar la sesión de Live API mediante el cliente oficial
+                session = await client.aio.connect({
+                    model: "models/gemini-2.0-flash-exp",
+                    config: {
+                        responseModalities: ["AUDIO"]
                     }
-                };
+                });
 
-                ws.onerror = (err) => {
-                    console.error("Error WS:", err);
-                    statusEl.textContent = "Error de red en el canal.";
-                    stopSession();
-                };
+                isConnected = true;
+                statusEl.textContent = "¡Conectado! Habla ahora...";
+                btnEl.textContent = "Colgar";
+                btnEl.classList.add('active');
 
-                ws.onclose = (event) => {
-                    statusEl.textContent = `Desconectado (Código: ${event.code})`;
-                    stopSession();
-                };
+                // Iniciar la transmisión de audio bidireccional
+                startAudioPipeline();
+                listenToResponses();
 
             } catch (err) {
-                console.error(err);
-                statusEl.textContent = "No se pudo iniciar el audio.";
-                stopSession();
+                console.error("Error al iniciar la llamada:", err);
+                statusEl.textContent = "Error: " + (err.message || "No se pudo conectar.");
+                stopCall();
             }
         }
 
-        function startAudioStream() {
+        async function startAudioPipeline() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             const source = audioContext.createMediaStreamSource(mediaStream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
             processor.onaudioprocess = (e) => {
-                if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+                if (!isConnected || !session) return;
                 
                 const inputData = e.inputBuffer.getChannelData(0);
                 const pcm16 = new Int16Array(inputData.length);
@@ -184,22 +162,39 @@
                 }
                 const base64Data = btoa(binary);
 
-                const msg = {
+                // Enviar chunks de audio a través del SDK oficial
+                session.send({
                     realtimeInput: {
                         mediaChunks: [{
                             mimeType: "audio/pcm;rate=16000",
                             data: base64Data
                         }]
                     }
-                };
-                ws.send(JSON.stringify(msg));
+                });
             };
 
             source.connect(processor);
             processor.connect(audioContext.destination);
         }
 
-        async function playAudio(base64Audio) {
+        async function listenToResponses() {
+            try {
+                for await (const message of session.receive()) {
+                    if (message.serverContent?.modelTurn?.parts) {
+                        for (const part of message.serverContent.modelTurn.parts) {
+                            if (part.inlineData && part.inlineData.mimeType.startsWith("audio/")) {
+                                playAudioOutput(part.inlineData.data);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Error en recepción de audio:", err);
+                stopCall();
+            }
+        }
+
+        async function playAudioOutput(base64Audio) {
             if (!audioContext) return;
             try {
                 const binaryString = atob(base64Audio);
@@ -223,18 +218,18 @@
                 node.connect(audioContext.destination);
                 node.start();
             } catch (e) {
-                console.error("Error reproduciendo:", e);
+                console.error("Error reproduciendo audio:", e);
             }
         }
 
-        function stopSession() {
+        function stopCall() {
+            if (session) {
+                try { session.close(); } catch(e) {}
+                session = null;
+            }
             if (mediaStream) {
                 mediaStream.getTracks().forEach(t => t.stop());
                 mediaStream = null;
-            }
-            if (ws) {
-                ws.close();
-                ws = null;
             }
             if (audioContext) {
                 audioContext.close();
@@ -242,8 +237,3 @@
             }
             isConnected = false;
             btnEl.textContent = "Conectar Llamada";
-            btnEl.classList.remove('active');
-        }
-    </script>
-</body>
-</html>
