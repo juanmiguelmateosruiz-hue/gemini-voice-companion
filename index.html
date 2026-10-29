@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Voice Link</title>
+    <title>Gemini Direct Companion</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -60,7 +60,7 @@
 </head>
 <body>
     <div class="container">
-        <h2>Canal de Voz Directo</h2>
+        <h2>Mi Aplicación de Voz</h2>
         
         <div class="config-box">
             <label for="apiKey">Tu clave API de Google AI Studio:</label>
@@ -85,25 +85,25 @@
             if (!isConnected) {
                 const apiKey = apiKeyInput.value.trim();
                 if (!apiKey) {
-                    alert("Por favor, introduce tu clave de API.");
+                    alert("Introduce tu clave API.");
                     return;
                 }
-                startLiveSession(apiKey);
+                startSession(apiKey);
             } else {
-                stopLiveSession();
+                stopSession();
             }
         }
 
-        async function startLiveSession(apiKey) {
+        async function startSession(apiKey) {
             try {
-                statusEl.textContent = "Solicitando acceso al micrófono...";
+                statusEl.textContent = "Solicitando micrófono...";
                 mediaStream = await navigator.mediaDevices.getUserMedia({ 
                     audio: { channelCount: 1, sampleRate: 16000 } 
                 });
 
-                statusEl.textContent = "Conectando al canal seguro...";
+                statusEl.textContent = "Estableciendo conexión segura...";
                 
-                // Endpoint estabilizado para WebSockets
+                // Conexión directa con cabeceras de protocolo corregidas
                 const host = "generativelanguage.googleapis.com";
                 const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
@@ -115,20 +115,16 @@
                     btnEl.textContent = "Colgar";
                     btnEl.classList.add('active');
 
-                    // Estructura de setup validada para evitar errores de política 1008
                     const setupMessage = {
                         setup: {
                             model: "models/gemini-2.0-flash-exp",
                             generationConfig: {
                                 responseModalities: ["AUDIO"]
-                            },
-                            systemInstruction: {
-                                parts: [{ text: "Eres Gemini, un asistente conversacional de voz directo, natural y fluido." }]
                             }
                         }
                     };
                     ws.send(JSON.stringify(setupMessage));
-                    startAudioInputStreaming();
+                    startAudioStream();
                 };
 
                 ws.onmessage = async (event) => {
@@ -140,35 +136,34 @@
                         if (response.serverContent?.modelTurn?.parts) {
                             for (const part of response.serverContent.modelTurn.parts) {
                                 if (part.inlineData && part.inlineData.mimeType.startsWith("audio/")) {
-                                    playAudioOutput(part.inlineData.data);
+                                    playAudio(part.inlineData.data);
                                 }
                             }
                         }
                     } catch (e) {
-                        console.error("Error procesando audio entrante", e);
+                        console.error("Error procesando audio:", e);
                     }
                 };
 
                 ws.onerror = (err) => {
-                    console.error("Error en WebSocket:", err);
+                    console.error("Error WS:", err);
                     statusEl.textContent = "Error de red en el canal.";
-                    stopLiveSession();
+                    stopSession();
                 };
 
                 ws.onclose = (event) => {
-                    console.log("WebSocket cerrado:", event);
-                    statusEl.textContent = `Llamada finalizada (Código: ${event.code})`;
-                    stopLiveSession();
+                    statusEl.textContent = `Desconectado (Código: ${event.code})`;
+                    stopSession();
                 };
 
             } catch (err) {
                 console.error(err);
-                statusEl.textContent = "No se pudo iniciar el canal de voz.";
-                stopLiveSession();
+                statusEl.textContent = "No se pudo iniciar el audio.";
+                stopSession();
             }
         }
 
-        function startAudioInputStreaming() {
+        function startAudioStream() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             const source = audioContext.createMediaStreamSource(mediaStream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -189,7 +184,7 @@
                 }
                 const base64Data = btoa(binary);
 
-                const realtimeMessage = {
+                const msg = {
                     realtimeInput: {
                         mediaChunks: [{
                             mimeType: "audio/pcm;rate=16000",
@@ -197,14 +192,14 @@
                         }]
                     }
                 };
-                ws.send(JSON.stringify(realtimeMessage));
+                ws.send(JSON.stringify(msg));
             };
 
             source.connect(processor);
             processor.connect(audioContext.destination);
         }
 
-        async function playAudioOutput(base64Audio) {
+        async function playAudio(base64Audio) {
             if (!audioContext) return;
             try {
                 const binaryString = atob(base64Audio);
@@ -224,3 +219,31 @@
                 buffer.getChannelData(0).set(float32);
 
                 const node = audioContext.createBufferSource();
+                node.buffer = buffer;
+                node.connect(audioContext.destination);
+                node.start();
+            } catch (e) {
+                console.error("Error reproduciendo:", e);
+            }
+        }
+
+        function stopSession() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            isConnected = false;
+            btnEl.textContent = "Conectar Llamada";
+            btnEl.classList.remove('active');
+        }
+    </script>
+</body>
+</html>
