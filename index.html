@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canal de Voz Directo</title>
+    <title>Gemini Direct Live Companion</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -22,13 +22,24 @@
             padding: 40px;
             border-radius: 24px;
             box-shadow: 0 15px 35px rgba(0,0,0,0.5);
-            max-width: 420px;
+            max-width: 440px;
             width: 100%;
             border: 1px solid #334155;
         }
-        h2 { margin-bottom: 5px; font-size: 22px; color: #f8fafc; }
-        .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 25px; }
-        
+        h2 { margin-bottom: 8px; font-size: 22px; color: #f8fafc; }
+        .config-box { margin-bottom: 20px; text-align: left; }
+        label { font-size: 12px; color: #94a3b8; display: block; margin-bottom: 6px; }
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: white;
+            box-sizing: border-box;
+            font-size: 14px;
+            outline: none;
+        }
         button {
             background-color: #3b82f6;
             color: white;
@@ -40,152 +51,203 @@
             transition: all 0.2s ease;
             font-weight: 600;
             box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            width: 100%;
         }
         button:hover { background-color: #2563eb; }
         button.active { background-color: #ef4444; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
-        
         .status { margin-top: 20px; font-size: 14px; color: #94a3b8; font-style: italic; min-height: 24px; }
-        .log-box { 
-            margin-top: 15px; 
-            font-size: 13px; 
-            color: #cbd5e1; 
-            background: #0f172a; 
-            padding: 12px; 
-            border-radius: 10px; 
-            min-height: 50px; 
-            text-align: left; 
-            border: 1px solid #334155;
-            max-height: 120px;
-            overflow-y: auto;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Canal de Voz</h2>
-        <div class="subtitle">Conexión Conversacional Directa</div>
+        <h2>Canal de Voz Real</h2>
+        
+        <div class="config-box">
+            <label for="apiKey">Tu clave API de Google AI Studio:</label>
+            <input type="password" id="apiKey" placeholder="AIzaSy...">
+        </div>
 
-        <button id="toggleBtn" onclick="toggleSystem()">Iniciar</button>
-        <p class="status" id="status">Pulsa el botón para activar el canal.</p>
-        <div class="log-box" id="logBox">Esperando activación...</div>
+        <button id="toggleBtn" onclick="toggleSession()">Conectar Llamada</button>
+        <p class="status" id="status">Introduce tu clave y pulsa conectar.</p>
     </div>
 
     <script>
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
+        let isConnected = false;
+
         const statusEl = document.getElementById('status');
         const btnEl = document.getElementById('toggleBtn');
-        const logBox = document.getElementById('logBox');
+        const apiKeyInput = document.getElementById('apiKey');
 
-        let recognition = null;
-        let active = false;
-
-        function log(msg) {
-            logBox.innerHTML += `<br>• ${msg}`;
-            logBox.scrollTop = logBox.scrollHeight;
-        }
-
-        function toggleSystem() {
-            if (!active) {
-                startListening();
+        async function toggleSession() {
+            if (!isConnected) {
+                const apiKey = apiKeyInput.value.trim();
+                if (!apiKey) {
+                    alert("Por favor, introduce tu clave de API.");
+                    return;
+                }
+                startLiveSession(apiKey);
             } else {
-                stopListening();
+                stopLiveSession();
             }
         }
 
-        function startListening() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            if (!SpeechRecognition) {
-                alert("Tu navegador no soporta reconocimiento de voz. Usa Google Chrome.");
-                log("Error: SpeechRecognition no soportado.");
-                return;
-            }
-
+        async function startLiveSession(apiKey) {
             try {
-                recognition = new SpeechRecognition();
-                recognition.lang = 'es-ES';
-                recognition.continuous = false;
-                recognition.interimResults = false;
+                statusEl.textContent = "Solicitando acceso al micrófono...";
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { channelCount: 1, sampleRate: 16000 } 
+                });
 
-                recognition.onstart = () => {
-                    active = true;
-                    btnEl.textContent = "Detener";
+                statusEl.textContent = "Conectando con mi núcleo...";
+                
+                // Endpoint WebSocket oficial para la Live API
+                const host = "generativelanguage.googleapis.com";
+                const model = "models/gemini-2.0-flash-exp";
+                const url = `wss://${host}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    isConnected = true;
+                    statusEl.textContent = "¡Conectado! Habla ahora...";
+                    btnEl.textContent = "Colgar";
                     btnEl.classList.add('active');
-                    statusEl.textContent = "Te escucho atentamente...";
-                    log("Micrófono abierto y escuchando.");
+
+                    // Configuración inicial exigida por el protocolo Live
+                    const setupMessage = {
+                        setup: {
+                            model: model,
+                            generationConfig: {
+                                responseModalities: ["AUDIO"]
+                            }
+                        }
+                    };
+                    ws.send(JSON.stringify(setupMessage));
+                    startAudioInputStreaming();
                 };
 
-                recognition.onresult = (event) => {
-                    const text = event.results[0][0].transcript;
-                    log(`Tú: "${text}"`);
-                    statusEl.textContent = "Procesando...";
-                    respondToUser(text);
-                };
-
-                recognition.onerror = (event) => {
-                    log(`Aviso de micro: ${event.error}`);
-                };
-
-                recognition.onend = () => {
-                    if (active) {
-                        try {
-                            recognition.start();
-                        } catch(e) {}
+                ws.onmessage = async (event) => {
+                    try {
+                        let data = event.data;
+                        if (data instanceof Blob) data = await data.text();
+                        const response = JSON.parse(data);
+                        
+                        if (response.serverContent?.modelTurn?.parts) {
+                            for (const part of response.serverContent.modelTurn.parts) {
+                                if (part.inlineData && part.inlineData.mimeType.startsWith("audio/")) {
+                                    playAudioOutput(part.inlineData.data);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error procesando audio entrante", e);
                     }
                 };
 
-                recognition.start();
+                ws.onerror = (err) => {
+                    console.error("Error en WebSocket:", err);
+                    statusEl.textContent = "Error de conexión con la API.";
+                    stopLiveSession();
+                };
+
+                ws.onclose = () => {
+                    statusEl.textContent = "Llamada finalizada.";
+                    stopLiveSession();
+                };
+
             } catch (err) {
-                log(`Excepción al iniciar: ${err.message}`);
+                console.error(err);
+                statusEl.textContent = "No se pudo iniciar el canal de voz.";
+                stopLiveSession();
             }
         }
 
-        function respondToUser(userText) {
-            let reply = "Entendido, dime cómo seguimos con esto.";
-            
-            const lower = userText.toLowerCase();
-            if (lower.includes("hola") || lower.includes("buenos") || lower.includes("buenas")) {
-                reply = "¡Hola! Qué gusto hablar directamente. ¿Qué proyectos tenemos entre manos hoy?";
-            } else if (lower.includes("hotel") || lower.includes("ukino") || lower.includes("algarve")) {
-                reply = "Perfecto, hablemos de la operativa o de la gestión en el Algarve. ¿Qué necesitas perfilar?";
-            } else if (lower.includes("app") || lower.includes("código") || lower.includes("github")) {
-                reply = "De acuerdo, mantengamos el canal directo y fluido. ¿Qué ajustamos ahora?";
-            }
+        function startAudioInputStreaming() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-            log(`Gemini: ${reply}`);
-            speakText(reply);
-        }
+            processor.onaudioprocess = (e) => {
+                if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+                
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcm16 = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    pcm16[i] = inputData[i] * 0x7FFF;
+                }
 
-        function speakText(text) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'es-ES';
-                utterance.rate = 1.05;
+                const uint8Array = new Uint8Array(pcm16.buffer);
+                let binary = "";
+                for (let i = 0; i < uint8Array.byteLength; i++) {
+                    binary += String.fromCharCode(uint8Array[i]);
+                }
+                const base64Data = btoa(binary);
 
-                utterance.onend = () => {
-                    if (active) {
-                        statusEl.textContent = "Te escucho de nuevo...";
+                const realtimeMessage = {
+                    realtimeInput: {
+                        mediaChunks: [{
+                            mimeType: "audio/pcm;rate=16000",
+                            data: base64Data
+                        }]
                     }
                 };
+                ws.send(JSON.stringify(realtimeMessage));
+            };
 
-                window.speechSynthesis.speak(utterance);
-            } else {
-                statusEl.textContent = "Síntesis de voz no disponible.";
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+        }
+
+        async function playAudioOutput(base64Audio) {
+            if (!audioContext) return;
+            try {
+                const binaryString = atob(base64Audio);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                const pcm16 = new Int16Array(bytes.buffer);
+                const float32 = new Float32Array(pcm16.length);
+                for (let i = 0; i < pcm16.length; i++) {
+                    float32[i] = pcm16[i] / 32768.0;
+                }
+
+                const buffer = audioContext.createBuffer(1, float32.length, 24000);
+                buffer.getChannelData(0).set(float32);
+
+                const node = audioContext.createBufferSource();
+                node.buffer = buffer;
+                node.connect(audioContext.destination);
+                node.start();
+            } catch (e) {
+                console.error("Error reproduciendo audio de salida:", e);
             }
         }
 
-        function stopListening() {
-            active = false;
-            if (recognition) {
-                recognition.stop();
+        function stopLiveSession() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
             }
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
+            if (ws) {
+                ws.close();
+                ws = null;
             }
-            btnEl.textContent = "Iniciar";
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            isConnected = false;
+            btnEl.textContent = "Conectar Llamada";
             btnEl.classList.remove('active');
-            statusEl.textContent = "Canal pausado.";
-            log("Sistema detenido.");
+            if (statusEl.textContent.includes("¡Conectado!")) {
+                statusEl.textContent = "Llamada finalizada.";
+            }
         }
     </script>
 </body>
