@@ -103,10 +103,9 @@
 
                 statusEl.textContent = "Conectando con mi núcleo...";
                 
-                // Endpoint WebSocket oficial para la Live API
+                // Usamos el modelo v1alpha compatible con WebSockets de Live API
                 const host = "generativelanguage.googleapis.com";
-                const model = "models/gemini-2.0-flash-exp";
-                const url = `wss://${host}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+                const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
                 ws = new WebSocket(url);
 
@@ -116,10 +115,10 @@
                     btnEl.textContent = "Colgar";
                     btnEl.classList.add('active');
 
-                    // Configuración inicial exigida por el protocolo Live
+                    // Estructura de configuración inicial exigida por el servidor
                     const setupMessage = {
                         setup: {
-                            model: model,
+                            model: "models/gemini-2.0-flash-exp",
                             generationConfig: {
                                 responseModalities: ["AUDIO"]
                             }
@@ -153,8 +152,9 @@
                     stopLiveSession();
                 };
 
-                ws.onclose = () => {
-                    statusEl.textContent = "Llamada finalizada.";
+                ws.onclose = (event) => {
+                    console.log("WebSocket cerrado:", event);
+                    statusEl.textContent = "Llamada finalizada (Código: " + event.code + ")";
                     stopLiveSession();
                 };
 
@@ -207,7 +207,7 @@
                 const binaryString = atob(base64Audio);
                 const len = binaryString.length;
                 const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
+                for (let i = i; i < len; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
 
@@ -245,9 +245,6 @@
             isConnected = false;
             btnEl.textContent = "Conectar Llamada";
             btnEl.classList.remove('active');
-            if (statusEl.textContent.includes("¡Conectado!")) {
-                statusEl.textContent = "Llamada finalizada.";
-            }
         }
     </script>
 </body>
