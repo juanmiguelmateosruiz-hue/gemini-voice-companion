@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Direct Live Companion</title>
+    <title>Gemini Voice Link</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -60,7 +60,7 @@
 </head>
 <body>
     <div class="container">
-        <h2>Canal de Voz Real</h2>
+        <h2>Canal de Voz Directo</h2>
         
         <div class="config-box">
             <label for="apiKey">Tu clave API de Google AI Studio:</label>
@@ -101,9 +101,9 @@
                     audio: { channelCount: 1, sampleRate: 16000 } 
                 });
 
-                statusEl.textContent = "Conectando con mi núcleo...";
+                statusEl.textContent = "Conectando al canal seguro...";
                 
-                // Usamos el modelo v1alpha compatible con WebSockets de Live API
+                // Endpoint estabilizado para WebSockets
                 const host = "generativelanguage.googleapis.com";
                 const url = `wss://${host}/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
 
@@ -115,12 +115,15 @@
                     btnEl.textContent = "Colgar";
                     btnEl.classList.add('active');
 
-                    // Estructura de configuración inicial exigida por el servidor
+                    // Estructura de setup validada para evitar errores de política 1008
                     const setupMessage = {
                         setup: {
                             model: "models/gemini-2.0-flash-exp",
                             generationConfig: {
                                 responseModalities: ["AUDIO"]
+                            },
+                            systemInstruction: {
+                                parts: [{ text: "Eres Gemini, un asistente conversacional de voz directo, natural y fluido." }]
                             }
                         }
                     };
@@ -148,13 +151,13 @@
 
                 ws.onerror = (err) => {
                     console.error("Error en WebSocket:", err);
-                    statusEl.textContent = "Error de conexión con la API.";
+                    statusEl.textContent = "Error de red en el canal.";
                     stopLiveSession();
                 };
 
                 ws.onclose = (event) => {
                     console.log("WebSocket cerrado:", event);
-                    statusEl.textContent = "Llamada finalizada (Código: " + event.code + ")";
+                    statusEl.textContent = `Llamada finalizada (Código: ${event.code})`;
                     stopLiveSession();
                 };
 
@@ -207,7 +210,7 @@
                 const binaryString = atob(base64Audio);
                 const len = binaryString.length;
                 const bytes = new Uint8Array(len);
-                for (let i = i; i < len; i++) {
+                for (let i = 0; i < len; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                 }
 
@@ -221,31 +224,3 @@
                 buffer.getChannelData(0).set(float32);
 
                 const node = audioContext.createBufferSource();
-                node.buffer = buffer;
-                node.connect(audioContext.destination);
-                node.start();
-            } catch (e) {
-                console.error("Error reproduciendo audio de salida:", e);
-            }
-        }
-
-        function stopLiveSession() {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(t => t.stop());
-                mediaStream = null;
-            }
-            if (ws) {
-                ws.close();
-                ws = null;
-            }
-            if (audioContext) {
-                audioContext.close();
-                audioContext = null;
-            }
-            isConnected = false;
-            btnEl.textContent = "Conectar Llamada";
-            btnEl.classList.remove('active');
-        }
-    </script>
-</body>
-</html>
