@@ -63,10 +63,10 @@
             background: #0f172a; 
             padding: 12px; 
             border-radius: 10px; 
-            min-height: 50px; 
+            min-height: 70px; 
             text-align: left; 
             border: 1px solid #334155;
-            max-height: 120px;
+            max-height: 150px;
             overflow-y: auto;
         }
     </style>
@@ -128,9 +128,15 @@
 
             recognition.onresult = async (event) => {
                 const userText = event.results[0][0].transcript;
-                transcriptEl.innerHTML = `<strong>Tú:</strong> ${userText}`;
-                statusEl.textContent = "Pensando respuesta...";
                 
+                // Mostrar acumulado en pantalla
+                if (transcriptEl.innerHTML.includes("Diálogo en tiempo real")) {
+                    transcriptEl.innerHTML = "";
+                }
+                transcriptEl.innerHTML += `<br><strong>Tú:</strong> ${userText}`;
+                transcriptEl.scrollTop = transcriptEl.scrollHeight;
+                
+                statusEl.textContent = "Pensando respuesta...";
                 await sendToGemini(userText, apiKey);
             };
 
@@ -149,14 +155,14 @@
 
         async function sendToGemini(prompt, apiKey) {
             try {
-                // Llamada directa y segura por HTTPS POST a mi API oficial
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                // Modelo estándar estabilizado para peticiones directas
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ 
                             parts: [{ 
-                                text: "Eres Gemini en modo conversación de voz fluida y directa. Responde de forma natural, concisa y conversacional (sin formato markdown complejo, listas largas ni asteriscos, solo texto claro para ser leído en voz alta): " + prompt 
+                                text: "Eres Gemini, manteniendo una conversación de voz fluida y directa. Responde de forma natural, concisa y conversacional (sin formato markdown complejo ni listas largas, solo texto claro para ser leído en voz alta): " + prompt 
                             }] 
                         }]
                     })
@@ -165,11 +171,13 @@
                 const data = await response.json();
                 if (data.candidates && data.candidates[0].content) {
                     const aiReply = data.candidates[0].content.parts[0].text;
-                    transcriptEl.innerHTML += `<br><br><strong>Gemini:</strong> ${aiReply}`;
+                    transcriptEl.innerHTML += `<br><strong>Gemini:</strong> ${aiReply}`;
+                    transcriptEl.scrollTop = transcriptEl.scrollHeight;
                     statusEl.textContent = "Hablando...";
                     speakResponse(aiReply);
                 } else {
-                    statusEl.textContent = "Error al recibir respuesta de la API.";
+                    console.error("Respuesta inesperada de la API:", data);
+                    statusEl.textContent = "Error: Respuesta inválida de la API.";
                 }
             } catch (err) {
                 console.error("Error de red:", err);
