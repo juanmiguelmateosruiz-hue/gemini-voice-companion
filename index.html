@@ -108,7 +108,7 @@
 
                 recognition.onstart = () => {
                     active = true;
-                    btnEl.textContent = "Escuchando...";
+                    btnEl.textContent = "Detener";
                     btnEl.classList.add('active');
                     statusEl.textContent = "Te escucho atentamente...";
                     log("Micrófono abierto y escuchando.");
@@ -122,8 +122,7 @@
                 };
 
                 recognition.onerror = (event) => {
-                    log(`Error de micro: ${event.error}`);
-                    statusEl.textContent = "Error detectado. Reiniciando...";
+                    log(`Aviso de micro: ${event.error}`);
                 };
 
                 recognition.onend = () => {
@@ -152,7 +151,7 @@
                 reply = "De acuerdo, mantengamos el canal directo y fluido. ¿Qué ajustamos ahora?";
             }
 
-            log(<strong>Gemini:</strong> ${reply});
+            log(`Gemini: ${reply}`);
             speakText(reply);
         }
 
