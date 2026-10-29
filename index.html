@@ -94,6 +94,7 @@
         const transcriptEl = document.getElementById('transcript');
         const apiKeyInput = document.getElementById('apiKey');
 
+        // Cargar automáticamente la clave API guardada en el navegador
         window.addEventListener('DOMContentLoaded', () => {
             const savedKey = localStorage.getItem('gemini_user_api_key');
             if (savedKey) {
@@ -167,7 +168,8 @@
         }
 
         async function sendToGemini(prompt, apiKey) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            // Usamos la versión de API 'v1' y el modelo estándar de producción
+            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
             
             try {
                 const response = await fetch(url, {
@@ -185,7 +187,6 @@
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    // Muestra el error exacto que devuelve Google en la pantalla
                     const errorMsg = data.error ? data.error.message : response.statusText;
                     statusEl.textContent = `Error HTTP ${response.status}`;
                     transcriptEl.innerHTML += `<br><span style="color: #ef4444;">[Google Error: ${errorMsg}]</span>`;
